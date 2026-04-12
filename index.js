@@ -2,7 +2,7 @@ const express = require('express')
 const app = express()
 const cors = require('cors')
 require('dotenv').config()
-const stripe = require('stripe')('process.env.STRIPE_SECRET');
+const stripe = require('stripe')(process.env.STRIPE_SECRET);
 const port = process.env.PORT || 3000
 
 // MongoClient - the main tool used to connect to your MongoDB database
@@ -93,15 +93,35 @@ async function run() {
         customer_email: paymentInfo.senderEmail,
         mode: 'payment',
         metadata: {
-          parcelId: paymentInfo.parcelId,
+          parcelId: paymentInfo._id,
         },
-        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`,
+        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-canceled`,
       })
-      console.log(session)
-      res.send({ url : session.url })
+      res.send({ url: session.url })
     })
 
+    app.patch('/payment-success', async (req, res) => {
+      const session_id = req.query.session_id
+      const session = await stripe.checkout.sessions.retrieve(session_id)
+      // console.log('this ia ss--', session.metadata.parcelId) it is ok
+
+      if (session.payment_status === 'paid') {
+        const id = session.metadata.parcelId
+        const query = { _id: new ObjectId(id) }
+        const update = {
+          $set : {
+            paymentStatus: 'paid',
+          }
+        }
+        const result = await parcelCollection.updateOne(query, update)
+        res.send( result)
+      } 
+      else {
+        res.send({ session: false })
+      }
+    })
+ 
 
 
     // Send a ping to confirm a successful connection
